@@ -1,0 +1,41 @@
+"","sample","pop","percent"
+"1","001_PC346C_1_ISO_WLSM.fcs","root",1
+"2","001_PC346C_1_ISO_WLSM.fcs","/Cells no debris",0.864308553157474
+"3","001_PC346C_1_ISO_WLSM.fcs","/Cells no debris/Singlets",0.768416184971098
+"4","001_PC346C_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.943280977312391
+"5","001_PC346C_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.0026795113081757
+"6","002_PC346C_1_SP_WLSM.fcs","root",1
+"7","002_PC346C_1_SP_WLSM.fcs","/Cells no debris",0.848294786358291
+"8","002_PC346C_1_SP_WLSM.fcs","/Cells no debris/Singlets",0.739648798521257
+"9","002_PC346C_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.943614894414595
+"10","002_PC346C_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.663389280630317
+"11","003_PC346C_DOC_1_SP_WLSM.fcs","root",1
+"12","003_PC346C_DOC_1_SP_WLSM.fcs","/Cells no debris",0.682524960961529
+"13","003_PC346C_DOC_1_SP_WLSM.fcs","/Cells no debris/Singlets",0.72071160165837
+"14","003_PC346C_DOC_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.510129480347077
+"15","003_PC346C_DOC_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.513935508202904
+"16","004_PC346C_DOC_1_ISO_WLSM.fcs","root",1
+"17","004_PC346C_DOC_1_ISO_WLSM.fcs","/Cells no debris",0.77093316750192
+"18","004_PC346C_DOC_1_ISO_WLSM.fcs","/Cells no debris/Singlets",0.732669039145907
+"19","004_PC346C_DOC_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.59061373399823
+"20","004_PC346C_DOC_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.0191892978544537
+"21","005_PC339_1_SP_WLSM.fcs","root",1
+"22","005_PC339_1_SP_WLSM.fcs","/Cells no debris",0.738956466069142
+"23","005_PC339_1_SP_WLSM.fcs","/Cells no debris/Singlets",0.683993935455924
+"24","005_PC339_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.911195552740835
+"25","005_PC339_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.54733956290061
+"26","006_PC339_1_ISO_WLSM.fcs","root",1
+"27","006_PC339_1_ISO_WLSM.fcs","/Cells no debris",0.813162490705677
+"28","006_PC339_1_ISO_WLSM.fcs","/Cells no debris/Singlets",0.692786968910815
+"29","006_PC339_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.903404033272967
+"30","006_PC339_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.00309187279151943
+"31","007_PC339_DOC_1_ISO_WLSM.fcs","root",1
+"32","007_PC339_DOC_1_ISO_WLSM.fcs","/Cells no debris",0.826991930743334
+"33","007_PC339_DOC_1_ISO_WLSM.fcs","/Cells no debris/Singlets",0.654906141966334
+"34","007_PC339_DOC_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.891267883571781
+"35","007_PC339_DOC_1_ISO_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.00440053138492195
+"36","008_PC339_DOC_1_SP_WLSM.fcs","root",1
+"37","008_PC339_DOC_1_SP_WLSM.fcs","/Cells no debris",0.759068378032367
+"38","008_PC339_DOC_1_SP_WLSM.fcs","/Cells no debris/Singlets",0.633489739875019
+"39","008_PC339_DOC_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells",0.869816022118306
+"40","008_PC339_DOC_1_SP_WLSM.fcs","/Cells no debris/Singlets/Viable cells/Human cells",0.409292469489464
