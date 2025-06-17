@@ -1,0 +1,664 @@
+---
+title: "Flow_cytometry_xenografts_results"
+author: "Ingrid P"
+date: "`r Sys.Date()`"
+output: 
+
+  html_document:
+    toc: true
+    toc_float: true
+    theme: simplex
+---
+
+pkgbuild::has_rtools()
+
+devtools::install_github("biosurf/cyCombine") 
+
+install.packages('sva')
+
+# To ensure Rstudio looks up BioConductor packages run:
+setRepositories(ind = c(1:6, 8))
+# Then install package with
+devtools::install_github("biosurf/cyCombine")
+
+# Library loading
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(flowCore)
+library(CATALYST)
+library(cyCombine)
+library(here)
+library(xlsx)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(rstatix)
+```
+
+## Transformácia datasetu
+
+
+1. vloženie súboru s markermi - fluorochrómami, ktoré boli použité pri meraní vzorkov (parametre, ktoré nás zaujímajú)
+
+```{r}
+panel_annotation <- read.xlsx(here('data','metadata.xlsx'), sheetName = 'panel_annotation')
+panel_annotation
+```
+
+
+
+2. Importovanie preprocessed FCS files 
+
+```{r}
+dataset <- read.flowSet(path = here("outputs", "preprocessed"),
+                        pattern = ".fcs$",
+                        transformation = F,
+                        truncate_max_range = F)
+```
+
+3. Logicle transformation - pre všetky súbory vo flowSete (transformovanie parametrov z tabuľky)
+
+```{r}
+
+for (i in names(dataset@frames)){
+  data <- dataset@frames[[i]]
+  translist <- estimateLogicle(data, channels = panel_annotation$Fluorochrome)
+  data_transformed <- flowCore::transform(data, translist)
+  old_filename <- strsplit(i, split = "_")
+  old_filename <- old_filename[[1]]
+  new_filename <- old_filename[1]
+  complete_filename <- paste0(new_filename,"_transformed.fcs")
+  print(complete_filename)
+  setwd(here('outputs','transformed'))
+  write.FCS(data_transformed, file = complete_filename)
+}
+```
+
+# Loading into CATALYST
+
+4. Načítanie transformovaných FCS súborov späť vo forme jedného flowSetu 
+
+```{r}
+dataset <- read.flowSet(path = here('outputs','transformed'),
+                        pattern = ".fcs$", 
+                        transformation = FALSE,
+                        truncate_max_range = FALSE)
+                        #which.lines = 35000
+```
+
+```{r}
+panel_annotation
+```
+
+5. Načítať anotáciu vzorkov - bude potrebná pre výsledný report + zmeniť kategoriálne dáta na faktory
+
+```{r}
+sample_annotation <- read.xlsx(here("data", "metadata.xlsx"), sheetName = "sample_annotation")
+
+str(sample_annotation)
+
+sample_annotation$Stained_or_control <- as.factor(sample_annotation$Stained_or_control)
+sample_annotation$Docetaxel <- as.factor(sample_annotation$Docetaxel)
+
+# išlo by to aj pomocou sapply?
+
+sample_annotation
+
+```
+
+6. Poradie súborov FCS (frames) zoradiť v rovnakom poradí ako v tabuľke annotation_table (riadky) + kontrola
+
+```{r}
+fcs_files <-names(dataset@frames)
+
+fcs_files
+# či poradie framov v datasete je rovnake ako FCSka v tabuľke - naloadujeme názvy z datasetu
+```
+
+```{r}
+sample_annotation <- sample_annotation[match(fcs_files, sample_annotation$Filename),]
+
+sample_annotation
+# preusporiadame tabuľku aby bola v poradí FCS files; 
+```
+
+```{r}
+sum((names(dataset@frames) == sample_annotation$Filename) == FALSE)
+
+#ak výsledok 0 = stlpce a riadky su zhodne
+```
+7. Vytvorenie SingleCellExperiment objektu, ktorý bude obnášať multiparamterickú flow analýzu (kód len skopírovaný z cvičenia)
+
+```{r}
+PC <- prepData(dataset, panel_annotation, sample_annotation,
+               panel_cols = list(channel = "Fluorochrome", antigen = "Marker", marker_class = 'Marker_class'),
+               md_cols = list(file = "Filename", id = "Samples",
+                              factors = c("Stained_or_control", "Docetaxel")),
+               FACS = TRUE)
+
+# zadefinované stlpce pre panel
+```
+
+8. Vygenerovaný graf s počtami buniek v datasete
+```{r}
+plotCounts(PC, group_by = 'sample_id')
+# počty buniek na jednotlivé vzorky - kontroly majú minimálny počet lebo neboli farbené (sample 1,4,6,7)
+```
+
+# Dimensional reduction
+## t-SNE
+
+9.Redukcia dimenzií a tvorba mapy = t-SNE - z 20 000 buniek
+
+
+```{r}
+PC <- runDR(PC, 
+            dr = "TSNE", 
+            cells = 20000, 
+            features = NULL,
+            assay = "exprs",
+            seed = 1,
+            verbose = TRUE)
+```
+
+## UMAP
+10.Redukcia dimenzií a tvorba mapy = UMAP - z 20 000 buniek
+
+
+```{r}
+PC <- runDR(PC, 
+           dr = "UMAP", 
+           cells = 20000,
+           features = NULL,
+           assay = "exprs",
+           verbose = TRUE)
+```
+
+# Clustering
+11. Tvorba FlowSOM clustrov (using all features, 15 x 15 grid and resulting in 50 final metaclusters) 
+
+```{r}
+PC <- cluster(PC, 
+              features = NULL, 
+              xdim = 15, 
+              ydim = 15, 
+              maxK = 50, 
+              verbose = TRUE, 
+              seed = 1)
+```
+
+# Data visualization
+
+12. Vizualizácia clustrov pomocou t-SNE aj UMAP
+
+
+```{r plotDR, warning = FALSE}
+plotDR(PC, dr = "TSNE", color_by = c("meta15"))
+```
+
+```{r plotDR, warning = FALSE}
+plotDR(PC, dr = "UMAP", color_by = c("meta15"))
+```
+
+# Data exploration and quality check
+
+13. Vizualizácia dát a ich zafarbenie niektorými markermi, ktoré sme si vybrali
+
+```{r, warning = FALSE}
+plotDR(PC, dr = "TSNE", color_by = c("CD9", "CD44", "CD63", "CD71", "CD81", "CD95", "CD166", "CD201"), ncol = 3)
+```
+
+14.Facetovanie t-SNE premennou, ktorú si vyberieme, napr. použitím parametru Docetaxel. Vidíme batch effect?? - je potrebná korekcia dát
+
+```{r, warning = FALSE}
+plotDR(PC, dr = "TSNE", color_by = c("meta15"), facet_by = "Docetaxel")
+```
+
+# Data integration
+## Data loading and conversion into dataframe
+
+15. Vytvorenie dataframe-u pre integráciu
+ 
+
+```{r}
+uncorrected <- convert_flowset(flowset = dataset,
+                               metadata = sample_annotation,
+                               filename_col = "Filename",
+                               sample_ids = "Samples", 
+                               batch_ids = "Docetaxel",
+                               condition = "Stained_or_control",
+                               anchor =  "Stained_or_control",
+                               panel = panel_annotation, 
+                               panel_channel = "Fluorochrome",
+                               panel_antigen = "Marker",
+                               down_sample = FALSE,
+                               seed = 1)
+# anchor - tie, čo naprieč batchmi budú vyzerať rovnako (v tomto prípade by kontroly mali byť rovnaké)
+
+```
+
+## Batch correction
+
+16. Rozbehnutie batch correction pomocou cyCombine
+. 
+
+```{r}
+corrected <- batch_correct(df = uncorrected,
+                           covar = "condition",
+                           markers = colnames(uncorrected[2:16]),
+                           norm_method = "scale", 
+                           rlen = 20, 
+                           seed = 1,
+                           anchor = "anchor")
+```
+
+17. Konvertovanie upravenej tabuľky späť do dataframe-u
+
+
+```{r}
+corrected <- data.frame(corrected)
+```
+
+## Evaluation the efficacy of the batch correction
+
+18. Z koľkých percent sa podarilo znížiť Batch efekt v našich dátach = EMD (porovnanie nekorektovaných a korektovaných matíc)
+
+
+```{r}
+emd <- evaluate_emd(uncorrected = uncorrected,
+                    corrected = corrected,
+                    cell_col = "condition",
+                    batch_col = "batch",
+                    markers = colnames(uncorrected[2:16]))
+
+#EMD = 0.72 --> zníženie batch efektu u dát o 72 %
+```
+19. Pozrieme sa na stratu biologickej vaariability
+
+
+```{r}
+mad <- evaluate_mad(uncorrected = uncorrected,
+                    corrected = corrected,
+                    cell_col = "condition",
+                    batch_col = "batch",
+                    markers = colnames(uncorrected[2:16]))
+
+# MAD = 0.01 - stratili sme len jedno percento biologickej variability 
+
+```
+
+## Preparation for FCS file export
+
+20. V tabuľke corrected odstrániť stlpce, ktoré nesúvisia s markermi (sample, batch, condition, anchor) pre export FCS súborov
+
+
+```{r}
+corrected$id <- NULL
+corrected$label <- NULL
+corrected$condition <- NULL
+corrected$anchor <- NULL
+corrected$batch <- NULL
+
+corrected
+```
+
+21. Zmeniť stlpec sample na faktor + načítať vo všetkých leveloch
+
+```{r}
+corrected$sample <- as.factor(corrected$sample)
+levels(corrected$sample)
+```
+
+
+## For loop for export
+
+22. Použitý predpísaný for cyklus pre export integrated FCS súborov (z opraveného = corrected = matrixu)
+
+
+```{r}
+for (i in levels(corrected$sample)){
+  data_filtered <- corrected[corrected$sample == i, ]
+  data_filtered$sample <- NULL
+  data_filtered <- flowCore::flowFrame(as.matrix(data_filtered))
+  setwd(here('outputs','integrated'))
+  complete_filename <- paste0(i,'_integrated.fcs')
+  print(complete_filename)
+  write.FCS(data_filtered, file = complete_filename)
+}
+```
+
+# Loading into CATALYST - integrated data
+
+23. Integrované FCS dáta načítať späť ako flowSet
+ 
+
+```{r}
+dataset <- read.flowSet(path = here('outputs','integrated'),
+                        pattern = ".fcs$", 
+                        transformation = FALSE,
+                        truncate_max_range = FALSE)
+                        #which.lines = 35000
+
+
+```
+
+24. Znova načítať panel s markermi (no z iného sheetu, kde sú fluorochrómy označené ako CD markre)
+
+```{r}
+panel_integrated <- read.xlsx(here('data','metadata.xlsx'), sheetName = 'panel_integrated_data')
+panel_integrated
+```
+
+25. pred zoradením FCS súbor v rovnakom poradí (v fcs_files aj sample_annotation$Filename_integrated) skontrolujem, či sa volajú rovnako
+```{r}
+
+sample_annotation$Filename_integrated
+
+```
+26. Rovnaký ako bod 6., no tu pracujeme so stlpcom Filename_integrated: Poradie súborov FCS (frames) zoradiť v rovnakom poradí ako v tabuľke annotation_table (riadky) + kontrola
+
+
+```{r}
+fcs_files <- names(dataset@frames)
+fcs_files
+```
+
+```{r}
+
+sample_annotation_int <- sample_annotation[match(fcs_files, sample_annotation$Filename_integrated),]
+ 
+
+
+sample_annotation_int
+```
+
+```{r}
+sum((names(dataset@frames) == sample_annotation_int$Filename_integrated) == FALSE)
+```
+27. Ďalší SingleCellExperiment, tentokrát s Filename_integrated 
+
+```{r}
+PC_integrated <- prepData(dataset, panel_integrated, sample_annotation_int,
+                          panel_cols = list(channel = "Fluorochrome", 
+                                            antigen = "Marker", 
+                                            marker_class = 'Marker_class'),
+                          md_cols = list(file = "Filename_integrated", 
+                                         id = "Samples",
+                          factors = c("Stained_or_control", "Docetaxel")),
+                          FACS = TRUE)
+```
+
+
+28. Znova - Vygenerovaný graf s počtami buniek v integrovanom datasete
+ 
+
+```{r}
+plotCounts(PC_integrated, group_by = 'sample_id')
+```
+
+# Dimensional reduction
+
+## t-SNE
+
+29. t-SNE na integrovaných dátach (z 20 000 buniek/vzorka)
+ 
+
+```{r}
+PC_integrated <- runDR(PC_integrated, 
+                       dr = "TSNE", 
+                       cells = 20000, 
+                       features = NULL,
+                       assay = "exprs",
+                       seed = 1,
+                       verbose = TRUE)
+```
+
+## UMAP
+
+30. UMAP na integrovaných dátach (z 20 000 buniek/ vzorka)
+
+```{r}
+PC_integrated <- runDR(PC_integrated, 
+                       dr = "UMAP", 
+                       cells = 20000,
+                       features = NULL,
+                       assay = "exprs",
+                       verbose = TRUE)
+```
+
+# Clustering
+
+31. FlowSOM clustering na integrovaných dátach, použijeme všetky bunky, všetky vlastnosti a tvorba 50 finálnych megaclusterov z 15x15 mriežky
+
+```{r}
+PC_integrated <- cluster(PC_integrated, 
+                         features = NULL, 
+                         xdim = 15, 
+                         ydim = 15, 
+                         maxK = 50, 
+                         verbose = TRUE, 
+                         seed = 1)
+```
+
+# Data visualization and quality check
+
+32. Vizualizácia t-SNE a UMAP redukcií 
+
+```{r}
+plotDR(PC_integrated, dr = "TSNE", color_by = c("meta15"))
+```
+
+```{r}
+plotDR(PC_integrated, dr = "UMAP", color_by = c("meta15"))
+```
+33. Facetovanie pre kontrolu batch efektu - batch efekt nebol potrebný?? Vyzerá to podobne ako pred ním
+
+```{r, warning = FALSE}
+plotDR(PC, dr = "TSNE", color_by = c("meta15"), facet_by = "Docetaxel")
+```
+
+# Data exploration
+
+34. Vizualizácia všetkých parametrov
+
+
+```{r, warning = FALSE}
+plotDR(PC, dr = "TSNE", color_by = c("meta15"), facet_by = "Stained_or")
+```
+
+```{r, warning = FALSE}
+
+```
+
+```{r, warning = FALSE}
+
+```
+
+```{r, warning = FALSE}
+
+```
+
+39. You can also include heatmap showing the marker expression in columns and clusters in rows, for better annotation of the dataset.
+
+```{r}
+plotExprHeatmap(PB_integrated, 
+                features = NULL,
+                by = "cluster_id", 
+                k = "meta25",
+                scale = "never", 
+                q = 0.01, 
+                perc = TRUE, 
+                col_dend = FALSE,
+                col_clust = TRUE,
+                row_dend = FALSE,
+                row_clust = FALSE)
+```
+
+# Annotation
+
+40. Use the expression profile mentioned below to annotate the clusters in your dataset (fill into the cluster_annotation sheet in metadata.xlsx file). Then, load your cluster annotation here and display it in the report.
+- NK cells - CD45+ CD161+ 
+- healthy B cells - CD45+ CD19+ CD5- CD44-
+- leukemic B cells - CD45+ CD19+ CD5+ CD44+ 
+- naive CD4+ T cells - CD45+ CD4+ CD62L+ CD44-
+- effector-memory CD4+ T cells - CD45+ CD4+ CD62L- CD44+
+- central memory CD4+ T cells - CD45+ CD4+ CD62L+ CD44+
+- Treg - CD45+ CD4+ CD25+ GITR+
+- naive CD8+ T cells - CD45+ CD8a+ CD62L+ CD44-
+- effector-memory CD8+ T cells - CD45+ CD8a+ CD62L- CD44+
+- central memory CD8+ T cells - CD45+ CD8a+ CD62L+ CD44+ 
+- exhausted CD8+ T cells - CD45+ CD8a+ PD-1+
+- senescent CD8+ T cells - CD45+ CD8a+ KLRG-1+
+- contamination/unknown - CD45-
+
+```{r}
+cluster_annotation <- 
+```
+
+41. Use the table to annotate the clusters in your dataset - creating a new object called PB_annotated. 
+
+```{r}
+PB_annotated <- mergeClusters(PB_integrated, 
+                              k = "meta25",
+                              id = "annotation",
+                              table = cluster_annotation)
+```
+
+42. Display the annotated clusters. 
+
+```{r}
+
+```
+
+# Exclusion of unwanted populations
+
+43. Exclude the contamination from your dataset using the filterSCE function. 
+
+```{r}
+PB_annotated <- filterSCE(PB_annotated, 
+                          k = 'annotation',
+                          cluster_id != "unknown")
+```
+
+44. Visualize the annotated clusters again. 
+
+```{r}
+
+```
+
+# Differential analysis
+
+45. Plot the abundances of annotated populations for each of the samples, and group the samples together according to the CLL stage. 
+
+```{r}
+
+```
+
+# Table export and conversion to percentages
+
+46. Export the absolute counts of cells in annotated populations from the dataset. 
+
+```{r, warning=FALSE}
+PB_annotated$annotation <- cluster_ids(PB_annotated, "annotation")
+
+all_populations <- as.data.frame(table(PB_annotated$sample_id, group.by = PB_annotated$annotation))
+all_populations <- all_populations %>% pivot_wider(names_from = group.by, values_from = Freq)
+all_populations
+```
+
+47. Use these counts to calculate the percentages of TOTAL for each population and each mouse (using the code below). 
+
+```{r}
+cols <- 2:ncol(all_populations)
+
+perc_all_populations <- all_populations[cols]/rowSums(all_populations[cols]) * 100
+perc_all_populations$TOTAL <- rowSums(perc_all_populations)
+```
+
+```{r}
+rownames(perc_all_populations) <- all_populations$Var1
+
+sample_annotation <- sample_annotation[match(rownames(perc_all_populations), sample_annotation$Mouse_ID),]
+perc_all_populations$Stage <- as.factor(sample_annotation$Stage)
+perc_all_populations
+```
+
+48. Export the table with percentages as a separate csv file. 
+
+```{r}
+
+```
+
+# EXAMPLE Visualization and testing of difference in the abundance of leukemic B cells in distinct CLL stages
+
+49. Test for the distribution of leukemic B cell abundances in the dataset. Choose right statistical test + post-hoc testing accordingly (using the code below).
+
+```{r}
+shapiro.test(perc_all_populations$`leukemic B cells`)
+```
+
+```{r}
+kruskal.test(`leukemic B cells` ~ Stage, perc_all_populations)
+```
+
+```{r}
+pairwise.wilcox.test(
+  perc_all_populations$`leukemic B cells`,
+  perc_all_populations$Stage,
+  p.adjust.method = 'BH')
+```
+
+50. Visualize the abundance using the code for boxplot written below. You can also automatically include the p-values from post-hoc testing you wish to display directly in the plot via stat_pvalue_manual. 
+
+```{r}
+perc_all_long <- perc_all_populations %>% 
+  pivot_longer(
+    cols = 1:(ncol(perc_all_populations)-2), 
+    names_to = "Celltype",
+    values_to = "Percentage")
+```
+
+```{r, echo=FALSE}
+CLL_plot <- perc_all_long %>% filter(Celltype == "leukemic B cells")
+CLL_plot$Celltype <- as.factor(CLL_plot$Celltype)
+
+stat.test <- perc_all_populations %>% pairwise_wilcox_test(`leukemic B cells` ~ Stage, p.adjust.method = 'BH')
+
+p <- ggplot(CLL_plot, aes(x = factor(Stage), y = Percentage)) +
+            geom_boxplot(outlier.size = 0, fill = c('#D9D9D9','#D37A7A','red','darkred')) + 
+            labs(x = "Condition", y = "% of CD45+ cells") +
+            ylim(0,105) +
+            geom_jitter(position=position_dodge(0.75)) +
+            stat_pvalue_manual(stat.test, y.position = c(88,93,98,120,120,120),label = 'p.adj',tip.length = 0.01) + 
+            theme_bw()
+p
+```
+
+# Dataset export
+
+51. Export the annotated SingleCellExperiment object as an rds file into the ~/outputs folder. 
+
+```{r}
+
+```
+
+
+# Analysis of the T cell subsets (optional homework)
+
+- Subset the dataset only to T cells. 
+- Perform dimensional reduction again and verify if in further detail, the T cell subsets have been annotated correctly. If not, then re-cluster and re-annotate the T cell populations in the T cell dataset.
+- Visualize the T cell subset abundances. 
+- Test for statistical significance in abundances of all T cell subsets between mice of different CLL stages. 
+- Visualize the abundances of T cell subsets that show significant differences in their abundance between CLL stages. 
+
+# Session info
+
+52. Do not forget to add the session info. 
+
+```{r}
+
+```
