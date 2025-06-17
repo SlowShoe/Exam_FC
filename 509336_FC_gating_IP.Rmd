@@ -1,0 +1,279 @@
+---
+title: "Flow_cytometry_xenografts"
+author: "Ingrid P"
+date: "`r Sys.Date()`"
+output:
+
+  html_document:
+    toc: true
+    toc_float: true
+    theme: simplex
+---
+
+BiocManager::install("flowCore")
+
+BiocManager::install("flowGate")
+
+devtools::install_github("biosurf/cyCombine") 
+
+BiocManager::install("CATALYST")
+
+# Library loading
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(flowCore)
+library(flowGate)
+library(here)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+```
+
+*Ak som do odevzdávarny nedala html súbor, je to preto lebo knit sa mi zasekol na 22 % :(
+
+
+1. načítanie všetkých FSC súborov ako flowSet (spracovanie raw dát)
+
+```{r}
+
+data.dir <- "C:/Users/Lenovo/Documents/Exam_FC/data"
+data <- read.flowSet(path = data.dir, pattern = "fcs$", truncate_max_range = F)
+```
+
+2. čeknutie štruktúr každého súboru
+
+```{r}
+pData(data)
+#View(data) - použila som, no pri knitovaní ma nechcelo pustiť ďalej
+
+# všetky majú 37 markerov
+# len pre predstavu:
+# data_1 má 50040 buniek
+# data_2 má 51020 buniek
+# data_3 má 105665 buniek
+# data_4 má 82011 buniek
+# data_5 má 56232 buniek
+# data_6 má 57831 buniek
+# data_7 má 74852 buniek
+# data_8 má 60926 buniek
+
+```
+
+# Interactive gating
+
+3. Vytvorenie prázdneho GatingSetu z FlowSetu
+
+```{r}
+gs <-GatingSet(data)
+```
+
+# No debris gating
+
+4.Vyvolanie interaktívneho gatingu pre gate - odstránenie debris
+
+```{r}
+gs_gate_interactive(gs,
+                    filterId = "Cells no debris",
+                    dims = list("FSC-A", "SSC-A"))
+
+# použila som FlowJo Biex lebo na x a y axis nebolo vidieť časť populácie buniek
+# gate type: Polygon
+```
+
+5.Gating = vytvorenie mapy/plotu buniek bez debrisu pomocou forward a side scatter
+
+```{r, fig.width=10, fig.height = 10}
+plot_nodebris <- ggcyto(gs, aes("FSC-A", "SSC-A")) +
+                  geom_hex(bins = 256) +
+                  geom_gate("Cells no debris") +
+                  geom_stats() +
+                  theme_minimal()
+plot_nodebris
+```
+
+# Singlets gating
+
+6. Vyvolanie interaktívneho gatingu pre gate - singlety - subset gatinu No debris
+```{r}
+gs_gate_interactive(gs,
+                    filterId = "Singlets",
+                    subset = "Cells no debris",
+                    dims = list("FSC-A", "FSC-H"))
+#Gate type = polygon
+```
+
+7. Gating = vytvorenie mapy/plotu Singletov 
+```{r}
+plot_singlets <- ggcyto(gs, aes("FSC-A", "FSC-H"), subset = "Cells no debris") +
+                  geom_hex(bins = 256) +
+                  geom_gate("Singlets") +
+                  geom_stats(adjust = c(1.5,0.05)) +
+                  theme_minimal()
+plot_singlets
+```
+# Live cells gating
+
+ 8. Vyvolanie interaktívneho gatingu pre gate - negatívne = živé bunky (live cells) - subset singletov
+
+```{r}
+gs_gate_interactive(gs,
+                    filterId = 'Viable cells',
+                    subset = 'Singlets',
+                    dims = list("Live/Dead Yellow-A", "SSC-A"))
+# Gate type = rectangle
+
+```
+9. Gating = vytvorenie mapy/plotu živých a mŕtvych buniek pomocou markeru Live/dead Yellow
+
+```{r, fig.width=10, fig.height=10}
+plot_viable <- ggcyto(gs, aes("Live/Dead Yellow-A", "SSC-A"), subset = "Singlets") +
+                geom_hex(bins = 256) +
+                geom_gate("Viable cells") +
+                geom_stats(location = 'plot') +
+                theme_minimal() +
+                scale_x_flowjo_biexp(maxValue = 1000000, widthBasis = -1000, pos = 2, neg = 0)
+plot_viable
+```
+
+
+# Human CD298+ cells gating
+
+10. Vyvolanie interaktívneho gatingu pre gate - pozitívne CD298+ bunky (fluorochróm FITC) - subset živých buniek
+
+```{r}
+gs_gate_interactive(gs,
+                    filterId = 'Human cells',
+                    subset = 'Viable cells',
+                    dims = list("FITC-A", "SSC-A"))
+```
+
+13.Gating = vytvorenie mapy/plotu CD298+ buniek pomocou markeru FITC-A, SSC-A
+
+```{r, fig.width=10, fig.height=10}
+plot_humancells <- ggcyto(gs, aes("FITC-A", "SSC-A"), subset = "Viable cells") +
+                     geom_hex(bins = 256) +
+                     geom_gate("Human cells") +
+                     geom_stats(location = 'plot') +
+                     theme_minimal() +
+                     scale_x_flowjo_biexp(maxValue = 1000000, widthBasis = -1000, pos = 4.2, neg = 0)
+plot_humancells
+```
+
+## Human cells regated
+
+14. Regate human cells gate kvôli neoptimálnemu gatingu 
+```{r}
+gs_gate_interactive(gs,
+                    filterId = 'Human cells',
+                    subset = 'Viable cells',
+                    dims = list("FITC-A", "SSC-A"),
+                    regate = TRUE)
+```
+
+15. Vytvorenie mového plotu
+
+```{r, fig.width=10, fig.height=10}
+plot_humancells <- ggcyto(gs, aes("FITC-A", "SSC-A"), subset = "Viable cells") +
+                     geom_hex(bins = 256) +
+                     geom_gate("Human cells") +
+                     geom_stats(location = 'plot') +
+                     theme_minimal() +
+                     scale_x_flowjo_biexp(maxValue = 1000000, widthBasis = -1000, pos = 4.2, neg = 0)
+plot_humancells
+```
+
+
+
+# Export výsledných gateov
+
+16. Uložiť gating set ako zložka .rds (= uloženie 1 objektu)
+
+```{r}
+saveRDS(gs, file = here('outputs','gating_set.rds'))
+```
+
+
+# Export sprocesovaných dát
+
+17. Exportovanie flowsetu - z buniek "Human cells" gateu
+
+```{r}
+hc_gated <- gs_pop_get_data(gs, y = 'Human cells', inverse.transform = FALSE)
+```
+
+18. Prevedenie späť na flowSet formát 
+
+```{r}
+fs_gated <- cytoset_to_flowSet(hc_gated)
+```
+
+
+19. Export individuálnych FSC súborov z flowSetu do zložky preprocessed pre ďalšie spracovanie
+
+
+```{r}
+for (i in names(fs_gated@frames)) {
+  data <- fs_gated@frames[[i]]
+  old_filename <- strsplit(i, split = "_")
+  old_filename <- old_filename[[1]]
+  new_filename <- old_filename[1]
+  setwd(here('outputs','preprocessed'))
+  complete_filename <- paste0(new_filename,"_preprocessed.fcs")
+  print(complete_filename)
+  write.FCS(data, filename = complete_filename)
+}
+```
+
+# Export of the plots
+
+20. Export gateovaných plotov každej populácie do .svg
+
+install.packages("svglite")
+
+```{r}
+save_plot(here('outputs','plot_nodebris.svg'), 
+          plot = plot_nodebris, 
+          base_width = 10, 
+          base_height = 10)
+
+save_plot(here('outputs','plot_singlets.svg'), 
+          plot = plot_singlets, 
+          base_width = 10, 
+          base_height = 10)
+
+save_plot(here('outputs','plot_viable.svg'), 
+          plot = plot_viable, 
+          base_width = 10, 
+          base_height = 10)
+
+save_plot(here('outputs','plot_humancells.svg'), 
+          plot = plot_humancells, 
+          base_width = 10, 
+          base_height = 10)
+```
+
+# Export of the table with percentages
+
+21. Export tabuľky s percentami gateovaných populácii do .csv
+
+
+```{r}
+results <- gs_pop_get_stats(gs, type = "percent")
+results
+```
+
+```{r}
+write.csv(results, here('outputs','results.csv'))
+```
+
+# Session info
+
+22. Do not forget to include the session info. 
+
+```{r}
+sessionInfo()
+```
+
